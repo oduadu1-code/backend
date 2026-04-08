@@ -64,33 +64,13 @@ async function creditWallet(username, amount) {
 // (Consider using MongoDB for this in production for persistence across restarts)
 const payments = new Map();
 
+
 const {
-  MPESA_CONSUMER_KEY,
-  MPESA_CONSUMER_SECRET,
-  MPESA_SHORTCODE,
-  MPESA_PASSKEY,
-  MPESA_CALLBACK_URL,
-  MPESA_ENV = 'sandbox',
-  PORT      = 3001
+  PAYHERO_AUTH_TOKEN,
+  PAYHERO_CHANNEL_ID,
+  PAYHERO_CALLBACK_URL,
+  PORT = 3001
 } = process.env;
-
-const MPESA_BASE = MPESA_ENV === 'production'
-  ? 'https://api.safaricom.co.ke'
-  : 'https://sandbox.safaricom.co.ke';
-
-async function getMpesaToken() {
-  const creds = Buffer.from(`${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`).toString('base64');
-  const res   = await axios.get(`${MPESA_BASE}/oauth/v1/generate?grant_type=client_credentials`, {
-    headers: { Authorization: `Basic ${creds}` }
-  });
-  return res.data.access_token;
-}
-
-function stkPassword() {
-  const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-  const raw       = `${MPESA_SHORTCODE}${MPESA_PASSKEY}${timestamp}`;
-  return { password: Buffer.from(raw).toString('base64'), timestamp };
-}
 
 // ── STK Push ───────────────────────────────────────────────────────────
 app.post('/api/deposit/stk', async (req, res) => {
@@ -100,33 +80,30 @@ app.post('/api/deposit/stk', async (req, res) => {
     return res.status(400).json({ error: 'Invalid request. Minimum deposit is KES 200.' });
 
   try {
-    const token                  = await getMpesaToken();
-    const { password, timestamp} = stkPassword();
-
     const payload = {
-      BusinessShortCode: MPESA_SHORTCODE,
-      Password         : password,
-      Timestamp        : timestamp,
-      TransactionType  : 'CustomerPayBillOnline',
-      Amount           : Math.round(amount),
-      PartyA           : phone,
-      PartyB           : MPESA_SHORTCODE,
-      PhoneNumber      : phone,
-      CallBackURL      : MPESA_CALLBACK_URL,
-      AccountReference : userId,
-      TransactionDesc  : 'PepetaHigh Deposit'
+      amount      : Math.round(amount),
+      phone_number: phone,
+      channel_id  : PAYHERO_CHANNEL_ID,
+      provider    : 'm-pesa',
+      external_ref: userId,
+      callback_url: PAYHERO_CALLBACK_URL
     };
 
-    const stk        = await axios.post(
-      `${MPESA_BASE}/mpesa/stkpush/v1/processrequest`,
+    const response = await axios.post(
+      'https://backend.payhero.co.ke/api/v2/payments',
       payload,
-      { headers: { Authorization: `Bearer ${token}` } }
+      {
+        headers: {
+          'Authorization': PAYHERO_AUTH_TOKEN,
+          'Content-Type' : 'application/json'
+        }
+      }
     );
-    const checkoutId = stk.data.CheckoutRequestID;
 
-    payments.set(checkoutId, { status: 'pending', amount, phone, userId, mpesaRef: null });
+    const reference = response.data.reference;
+    payments.set(reference, { status: 'pending', amount, phone, userId, mpesaRef: null });
 
-    res.json({ CheckoutRequestID: checkoutId });
+    res.json({ CheckoutRequestID: reference });
 
   } catch (err) {
     console.error('[stk-push]', err?.response?.data || err.message);
@@ -134,28 +111,24 @@ app.post('/api/deposit/stk', async (req, res) => {
   }
 });
 
-// ── M-Pesa Callback ────────────────────────────────────────────────────
+// ── PayHero Callback ───────────────────────────────────────────────────
 app.post('/api/deposit/callback', async (req, res) => {
-  const body = req.body?.Body?.stkCallback;
-  if (!body) return res.json({ ResultCode: 0 });
+  const { status, reference, external_ref } = req.body;
 
-  const { CheckoutRequestID: checkoutId, ResultCode: resultCode } = body;
-  const p = payments.get(checkoutId);
-  if (!p) return res.json({ ResultCode: 0 });
+  const p = payments.get(reference);
+  if (!p) return res.json({ success: true });
 
-  if (resultCode === 0) {
+  if (status === 'SUCCESS') {
     p.status   = 'completed';
-    p.mpesaRef = body.CallbackMetadata?.Item?.find(i => i.Name === 'MpesaReceiptNumber')?.Value || null;
-
-    // Credit the wallet in MongoDB
+    p.mpesaRef = reference;
     await creditWallet(p.userId, p.amount);
-    console.log(`[mpesa] Payment completed. Ref: ${p.mpesaRef}`);
+    console.log(`[payhero] Payment completed. Ref: ${reference}`);
   } else {
     p.status = 'failed';
-    console.warn(`[mpesa] Payment failed. ResultCode: ${resultCode}`);
+    console.warn(`[payhero] Payment failed. Status: ${status}`);
   }
 
-  res.json({ ResultCode: 0 });
+  res.json({ success: true });
 });
 
 // ── STK Status check (optional polling endpoint) ───────────────────────
