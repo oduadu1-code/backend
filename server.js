@@ -1,30 +1,36 @@
 'use strict';
 /**
  * PepetaHigh — server.js
- * Main entry point. SQLite has been removed; MongoDB Atlas is used via db/db.js.
+ * Main entry point. MongoDB Atlas is used via db/db.js.
  */
 
 require('dotenv').config();
 
-const express  = require('express');
-const cors     = require('cors');
-const axios    = require('axios');
+const express = require('express');
+const cors    = require('cors');
+const axios   = require('axios');
 
 // ── DB connection (Mongoose) — import early so it connects on startup ──
 const { Users } = require('./db/db');
 
 const app = express();
 
-// ── Middleware ─────────────────────────────────────────────────────────
+// ── CORS ───────────────────────────────────────────────────────────────
 app.use(cors({
-  origin      : ['https://pepetahigh.com', 'http://localhost:3000'],
-  methods     : ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  origin: [
+    'https://pepetahigh.com',
+    'http://localhost:3000',
+    'http://127.0.0.1:5500'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials : true
+  credentials: true
 }));
 
-// Explicitly handle preflight
+// Handle preflight for all routes
 app.options('*', cors());
+
+// ── Body parser ────────────────────────────────────────────────────────
 app.use(express.json());
 
 // ── Auth routes (/api/auth/register, /login, /me, etc.) ───────────────
@@ -65,9 +71,7 @@ async function creditWallet(username, amount) {
 ───────────────────────────────────────────── */
 
 // In-memory map for pending STK push payments
-// (Consider using MongoDB for this in production for persistence across restarts)
 const payments = new Map();
-
 
 const {
   PAYHERO_AUTH_TOKEN,
@@ -135,7 +139,7 @@ app.post('/api/deposit/callback', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── STK Status check (optional polling endpoint) ───────────────────────
+// ── STK Status check ───────────────────────────────────────────────────
 app.get('/api/deposit/status/:checkoutId', (req, res) => {
   const p = payments.get(req.params.checkoutId);
   if (!p) return res.status(404).json({ error: 'Payment not found' });
