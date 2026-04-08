@@ -17,11 +17,14 @@ const app = express();
 
 // ── Middleware ─────────────────────────────────────────────────────────
 app.use(cors({
-  origin      : '*',
-  methods     : ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin      : ['https://pepetahigh.com', 'http://localhost:3000'],
+  methods     : ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials : true
 }));
-app.use(express.json());
+
+// Explicitly handle preflight
+app.options('*', cors());
 
 // ── Auth routes (/api/auth/register, /login, /me, etc.) ───────────────
 app.use('/api/auth', require('./routes/auth'));
