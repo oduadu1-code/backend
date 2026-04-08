@@ -25,6 +25,7 @@ app.use(cors({
 
 // Explicitly handle preflight
 app.options('*', cors());
+app.use(express.json());
 
 // ── Auth routes (/api/auth/register, /login, /me, etc.) ───────────────
 app.use('/api/auth', require('./routes/auth'));
