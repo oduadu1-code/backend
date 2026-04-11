@@ -156,7 +156,7 @@ app.post('/api/wallet/credit', requireGameSecret, async (req, res) => {
 /* ─────────────────────────────────────────────
    💳  PAYHERO / M-PESA
 ───────────────────────────────────────────── */
-const PAYHERO_CHANNEL_ID   = process.env.PAYHERO_CHANNEL_ID;
+const PAYHERO_CHANNEL_ID = process.env.PAYHERO_ACCOUNT_ID;
 const PAYHERO_CALLBACK_URL = process.env.PAYHERO_CALLBACK_URL;
 const PAYHERO_AUTH_TOKEN   = process.env.PAYHERO_AUTH_TOKEN?.replace(/[\r\n\s]+/g, '').trim();
 const PORT                 = process.env.PORT || 3001;
